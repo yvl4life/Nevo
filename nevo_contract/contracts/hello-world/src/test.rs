@@ -108,6 +108,7 @@ fn test_multiple_donations() {
 #[test]
 fn test_close_pool() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(Contract, ());
     let client = ContractClient::new(&env, &contract_id);
 
@@ -117,17 +118,7 @@ fn test_close_pool() {
     let goal: u128 = 1_000_000_000;
 
     let pool_id = client.create_pool(&creator, &title, &description, &goal);
-    client
-        .mock_auths(&[MockAuth {
-            address: &creator,
-            invoke: &MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "close_pool",
-                args: (&pool_id,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .close_pool(&pool_id);
+    client.close_pool(&pool_id);
 
     let pool = client.get_pool(&pool_id);
     assert_eq!(pool.4, true); // is_closed
@@ -137,6 +128,7 @@ fn test_close_pool() {
 #[should_panic(expected = "Pool is closed")]
 fn test_donate_to_closed_pool() {
     let env = Env::default();
+    env.mock_all_auths();
     let contract_id = env.register(Contract, ());
     let client = ContractClient::new(&env, &contract_id);
 
@@ -147,17 +139,7 @@ fn test_donate_to_closed_pool() {
     let goal: u128 = 1_000_000_000;
 
     let pool_id = client.create_pool(&creator, &title, &description, &goal);
-    client
-        .mock_auths(&[MockAuth {
-            address: &creator,
-            invoke: &MockAuthInvoke {
-                contract: &contract_id,
-                fn_name: "close_pool",
-                args: (&pool_id,).into_val(&env),
-                sub_invokes: &[],
-            },
-        }])
-        .close_pool(&pool_id);
+    client.close_pool(&pool_id);
 
     client.donate(&pool_id, &donor, &100_000_000);
 }
@@ -398,10 +380,8 @@ fn test_claim_funds_no_status() {
         &1_000_000_000,
     );
 
-    // Donate to the pool
     client.donate(&pool_id, &creator, &500_000_000);
 
-    // Try to claim without setting status - should panic
     client.claim_funds(&student, &pool_id, &100_000_000i128, &token_address);
 }
 
@@ -424,13 +404,9 @@ fn test_claim_funds_rejected_application() {
         &1_000_000_000,
     );
 
-    // Donate to the pool
     client.donate(&pool_id, &creator, &500_000_000);
-
-    // Set status to "Rejected"
     client.set_application_status(&pool_id, &student, &String::from_str(&env, "Rejected"));
 
-    // Try to claim with rejected status - should panic
     client.claim_funds(&student, &pool_id, &100_000_000i128, &token_address);
 }
 
@@ -453,13 +429,9 @@ fn test_claim_funds_overdraw() {
         &1_000_000_000,
     );
 
-    // Donate only 100_000_000 to the pool
     client.donate(&pool_id, &creator, &100_000_000);
-
-    // Set status to "Approved"
     client.set_application_status(&pool_id, &student, &String::from_str(&env, "Approved"));
 
-    // Try to claim more than available - should panic
     client.claim_funds(&student, &pool_id, &500_000_000i128, &token_address);
 }
 
@@ -482,18 +454,14 @@ fn test_claim_funds_negative_amount() {
         &1_000_000_000,
     );
 
-    // Donate to the pool
     client.donate(&pool_id, &creator, &500_000_000);
-
-    // Set status to "Approved"
     client.set_application_status(&pool_id, &student, &String::from_str(&env, "Approved"));
 
-    // Try to claim negative amount - should panic
     client.claim_funds(&student, &pool_id, &-100_000_000i128, &token_address);
 }
 
 #[test]
-fn test_claim_funds_get_claimed_amount() {
+fn test_get_claimed_amount_initial_zero() {
     let env = Env::default();
     let contract_id = env.register(Contract, ());
     let client = ContractClient::new(&env, &contract_id);
@@ -508,15 +476,8 @@ fn test_claim_funds_get_claimed_amount() {
         &1_000_000_000,
     );
 
-    // Initially, claimed amount should be 0
     let initial_claimed = client.get_claimed_amount(&pool_id, &student);
     assert_eq!(initial_claimed, 0);
-
-    // Donate to the pool
-    client.donate(&pool_id, &creator, &500_000_000);
-
-    // Set status to "Approved"
-    client.set_application_status(&pool_id, &student, &String::from_str(&env, "Approved"));
 }
 
 #[test]
@@ -535,15 +496,12 @@ fn test_get_application_status() {
         &1_000_000_000,
     );
 
-    // Initially, status should be empty
     let initial_status = client.get_application_status(&pool_id, &student);
     assert_eq!(initial_status, String::from_str(&env, ""));
 
-    // Set status to "Approved"
     let approved_status = String::from_str(&env, "Approved");
     client.set_application_status(&pool_id, &student, &approved_status);
 
-    // Check that status was set correctly
     let status_after_set = client.get_application_status(&pool_id, &student);
     assert_eq!(status_after_set, approved_status);
 }
